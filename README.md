@@ -61,7 +61,7 @@ if let rl = xeboki.lastRateLimit {
 
 ## Authentication
 
-All requests are authenticated using an API key from your [Xeboki account dashboard](https://account.xeboki.com).
+All requests are authenticated using an API key. Generate and manage your keys at [account.xeboki.com/developer](https://account.xeboki.com/developer).
 
 | Key prefix     | Environment |
 |----------------|-------------|
