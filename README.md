@@ -90,7 +90,30 @@ let xeboki = XebokiClient(options: options)
 
 ### `pos` — Point of Sale
 
-Manage orders, products, inventory, customers, and sales reports.
+Build custom ordering apps, mobile storefronts, kiosk interfaces, and integrations on top of any subscriber's POS data.
+
+#### Catalog
+
+```swift
+// List active products
+let products = try await xeboki.pos.listProducts(params: .init(
+    locationId: "loc_abc",
+    categoryId: "cat_drinks",
+    isActive: true,
+    search: "espresso",
+    limit: 100
+))
+
+// Get a single product
+let product = try await xeboki.pos.getProduct(id: "prod_abc")
+print(product.name, product.price)
+
+// List categories
+let categories = try await xeboki.pos.listCategories(params: .init(
+    locationId: "loc_abc",
+    isActive: true
+))
+```
 
 #### Orders
 
@@ -98,7 +121,7 @@ Manage orders, products, inventory, customers, and sales reports.
 // List orders
 let result = try await xeboki.pos.listOrders(params: .init(
     limit: 50,
-    status: .completed,
+    status: "confirmed",    // pending|confirmed|processing|ready|completed|cancelled
     locationId: "loc_abc",
     startDate: "2026-01-01",
     endDate: "2026-03-31"
@@ -106,44 +129,176 @@ let result = try await xeboki.pos.listOrders(params: .init(
 
 // Get a single order
 let order = try await xeboki.pos.getOrder(id: "ord_abc123")
-print(order.total, order.paymentMethod)
+print(order.total, order.paidTotal, order.status)
 
-// Create an order
-let newOrder = try await xeboki.pos.createOrder(params: .init(
-    items: [
-        .init(productId: "prod_1", quantity: 2),
-        .init(productId: "prod_2", quantity: 1, modifiers: [.init(modifierId: "mod_oat")])
-    ],
-    locationId: "loc_abc",
-    paymentMethod: "card",
-    customerId: "cust_xyz"
+// Create an order — inventory atomically reserved on create
+let newOrder = try await xeboki.pos.createOrder(
+    params: .init(
+        locationId: "loc_abc",
+        orderType: "pickup",         // pickup|delivery|dine_in|takeaway
+        items: [
+            .init(productId: "prod_1", quantity: 2),
+            .init(productId: "prod_2", quantity: 1,
+                  modifiers: [.init(modifierId: "mod_oat")])
+        ],
+        customerId: "cust_xyz",
+        reference: "web-order-991",  // your external order ID (idempotency)
+        notes: "No ice please",
+        tableId: "tbl_5"
+    ),
+    idempotencyKey: UUID().uuidString
+)
+
+// Update order status (invalid transitions return 409)
+try await xeboki.pos.updateOrderStatus(
+    id: "ord_abc123",
+    params: .init(status: "confirmed", note: "Confirmed by kitchen")
+)
+
+// Cancel — inventory is automatically restored
+try await xeboki.pos.updateOrderStatus(
+    id: "ord_abc123",
+    params: .init(status: "cancelled")
+)
+```
+
+**Order status machine:** `pending → confirmed → processing → ready → completed` (any non-terminal → `cancelled`)
+
+#### Payments
+
+The API records payments — it does not process card charges. Collect payment in your app, then record the result.
+
+```swift
+// Record a full payment
+let payment = try await xeboki.pos.payOrder(
+    id: "ord_abc123",
+    params: .init(method: "card", amount: 42.50, reference: "pi_stripe_abc")
+)
+
+// Split payment — add partial amounts one at a time
+let first = try await xeboki.pos.addPayment(
+    orderId: "ord_abc123",
+    params: .init(method: "cash", amount: 20.00)
+)
+print("Remaining: \(first.remainingAmount)")
+
+let second = try await xeboki.pos.addPayment(
+    orderId: "ord_abc123",
+    params: .init(method: "card", amount: 22.50, reference: "pi_stripe_xyz")
+)
+print("Fully paid: \(second.isFullyPaid)")  // true → order auto-completes
+
+// List all payments on an order
+let payments = try await xeboki.pos.listPayments(orderId: "ord_abc123")
+```
+
+#### Customers
+
+```swift
+// Search customers
+let customers = try await xeboki.pos.listCustomers(
+    params: .init(search: "jane", limit: 20)
+)
+
+// Get a single customer (includes loyalty points, store credit)
+let customer = try await xeboki.pos.getCustomer(id: "cust_abc")
+
+// Create a customer
+let newCustomer = try await xeboki.pos.createCustomer(params: .init(
+    name: "Jane Doe",
+    email: "jane@example.com",
+    phone: "+1-555-0100"
 ))
 ```
 
-#### Products
+#### Appointments
+
+For service-based businesses — salons, gyms, repair shops, spas.
 
 ```swift
-// List products
-let products = try await xeboki.pos.listProducts(params: .init(
+// List appointments
+let appts = try await xeboki.pos.listAppointments(params: .init(
     locationId: "loc_abc",
-    isActive: true,
-    search: "espresso"
+    status: "confirmed",  // pending|confirmed|in_progress|completed|cancelled|no_show
+    date: "2026-04-15",
+    staffId: "staff_xyz"
 ))
 
-// Create a product
-let product = try await xeboki.pos.createProduct(params: .init(
-    name: "Flat White",
-    price: 4.50,
+// Book an appointment
+let newAppt = try await xeboki.pos.createAppointment(params: .init(
     locationId: "loc_abc",
-    taxRate: 0.10,
-    trackInventory: true
+    customerId: "cust_xyz",
+    serviceId: "prod_haircut",
+    staffId: "staff_xyz",
+    startTime: "2026-04-15T14:00:00Z",
+    durationMinutes: 60,
+    notes: "Trim only"
 ))
 
-// Update a product
-let updated = try await xeboki.pos.updateProduct(
-    id: "prod_abc",
-    params: .init(price: 4.75)
+// Update appointment status
+// When status → 'completed', a POS order is auto-created for sales reporting
+try await xeboki.pos.updateAppointmentStatus(
+    id: "appt_abc",
+    params: .init(status: "confirmed")
 )
+```
+
+#### Staff
+
+```swift
+// List active staff members
+let staff = try await xeboki.pos.listStaff(params: .init(
+    locationId: "loc_abc",
+    isActive: true
+))
+
+// Get a staff member
+let member = try await xeboki.pos.getStaffMember(id: "staff_abc")
+```
+
+#### Discounts
+
+```swift
+// List active discount rules
+let discounts = try await xeboki.pos.listDiscounts(params: .init(
+    locationId: "loc_abc",
+    isActive: true
+))
+
+// Validate a discount code before applying
+let result = try await xeboki.pos.validateDiscount(params: .init(
+    code: "SUMMER20",
+    orderTotal: 85.00,
+    locationId: "loc_abc"
+))
+if result.valid {
+    print("\(result.type): \(result.value)")   // "percent": 20 or "fixed": 10
+    print("Saves: $\(result.discountAmount)")
+} else {
+    print(result.reason)  // expired | not_found | minimum_not_met
+}
+```
+
+#### Tables
+
+```swift
+// List tables
+let tables = try await xeboki.pos.listTables(params: .init(
+    locationId: "loc_abc",
+    status: "available"  // available|occupied|reserved|cleaning
+))
+
+// Update table status
+try await xeboki.pos.updateTable(id: "tbl_5", params: .init(status: "occupied"))
+```
+
+#### Gift Cards
+
+```swift
+// Look up a gift card by code
+let card = try await xeboki.pos.getGiftCard(code: "GC-XYZ-123")
+print("Balance: $\(card.balance)")
+print("Active: \(card.isActive)")
 ```
 
 #### Inventory
@@ -155,27 +310,43 @@ let inventory = try await xeboki.pos.listInventory(
 )
 
 // Adjust stock level
-let item = try await xeboki.pos.updateInventory(
+try await xeboki.pos.updateInventory(
     id: "inv_abc",
     params: .init(quantity: 50, reason: "restock", notes: "Weekly delivery")
 )
 ```
 
-#### Customers
+#### Webhooks
 
 ```swift
-// Search customers
-let customers = try await xeboki.pos.listCustomers(
-    params: .init(search: "jane", limit: 20)
-)
-
-// Create a customer
-let customer = try await xeboki.pos.createCustomer(params: .init(
-    name: "Jane Doe",
-    email: "jane@example.com",
-    phone: "+1-555-0100"
+// Register a webhook
+let webhook = try await xeboki.pos.createWebhook(params: .init(
+    url: "https://yourserver.com/xeboki/events",
+    events: ["order.created", "order.completed", "order.cancelled"]
 ))
+print(webhook.secret)  // whsec_... — shown ONCE, store it securely
+
+// List registered webhooks
+let webhooks = try await xeboki.pos.listWebhooks()
+
+// Delete a webhook
+try await xeboki.pos.deleteWebhook(id: "wh_abc123")
 ```
+
+**Verifying webhook signatures in Swift**
+
+```swift
+import CryptoKit
+
+func verifyWebhook(secret: String, body: Data, signature: String) -> Bool {
+    guard let key = SymmetricKey(data: Data(secret.utf8)) as SymmetricKey?,
+          let expected = "sha256=" + HMAC<SHA256>.authenticationCode(for: body, using: key)
+              .map({ String(format: "%02x", $0) }).joined() as String? else { return false }
+    return expected == signature
+}
+```
+
+**Available POS events:** `order.created` · `order.updated` · `order.completed` · `order.cancelled` · `order.payment_added` · `order.paid` · `appointment.created` · `appointment.updated` · `appointment.completed` · `appointment.cancelled` · `inventory.low_stock`
 
 #### Sales Report
 
