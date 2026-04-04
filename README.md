@@ -1,6 +1,10 @@
-# XebokiSDK for Swift
+<p align="center">
+  <img src="https://raw.githubusercontent.com/xeboki/ordering-app/main/assets/images/xe_logo.svg" alt="Xeboki" width="120" />
+</p>
 
-Official Swift SDK for the [Xeboki developer API](https://developers.xeboki.com). Supports iOS, macOS, tvOS, and watchOS with native `async/await` and zero third-party dependencies.
+<h1 align="center">Xeboki SDK for Swift</h1>
+
+<p align="center">Official Swift SDK for the <a href="https://developers.xeboki.com">Xeboki developer API</a>. Supports iOS, macOS, tvOS, and watchOS with native <code>async/await</code> and zero third-party dependencies.</p>
 
 [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9+-F05138.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2015%20%7C%20macOS%2012%20%7C%20tvOS%2015%20%7C%20watchOS%208-lightgrey.svg)](Package.swift)
