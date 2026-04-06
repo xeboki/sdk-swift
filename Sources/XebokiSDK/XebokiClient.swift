@@ -25,6 +25,7 @@ public final class XebokiClient: @unchecked Sendable {
     public let analytics: AnalyticsClient
     public let account: AccountClient
     public let launchpad: LaunchpadClient
+    public let developer: DeveloperClient
 
     private var _lastRateLimit: RateLimitInfo?
     public var lastRateLimit: RateLimitInfo? { _lastRateLimit }
@@ -44,6 +45,7 @@ public final class XebokiClient: @unchecked Sendable {
         self.analytics = AnalyticsClient(http: http, onRateLimit: onRateLimit)
         self.account = AccountClient(http: http, onRateLimit: onRateLimit)
         self.launchpad = LaunchpadClient(http: http, onRateLimit: onRateLimit)
+        self.developer = DeveloperClient(http: http, onRateLimit: onRateLimit)
     }
 
     /// Convenience initialiser accepting just the API key.

@@ -527,6 +527,82 @@ let release = try await xeboki.launchpad.createRelease(
 
 ---
 
+### `developer` — API Keys & Webhooks
+
+Manage API keys and webhook endpoints programmatically.
+Requires a POS JWT issued to an admin-role user.
+
+```swift
+// ── API Keys ─────────────────────────────────────────────────────────────────
+
+// List all keys
+let keys = try await xeboki.developer.listApiKeys()
+
+// Create a key — full key shown ONCE, store it securely
+let created = try await xeboki.developer.createApiKey(
+    CreateApiKeyParams(name: "Mobile Storefront", scopes: ["pos:read", "orders:write"])
+)
+print("Save this key now: \(created.key)")
+
+// Revoke a key
+try await xeboki.developer.revokeApiKey(id: keyId)
+
+// ── Webhooks ──────────────────────────────────────────────────────────────────
+
+// Register an endpoint
+let hook = try await xeboki.developer.registerWebhook(
+    RegisterWebhookParams(
+        url:    "https://yourserver.com/webhooks/xeboki",
+        events: ["order.created", "order.status_changed"]
+    )
+)
+
+// Send a test event
+try await xeboki.developer.testWebhook(id: hook.id, event: "order.created")
+
+// Delete an endpoint
+try await xeboki.developer.deleteWebhook(id: hook.id)
+```
+
+**Verifying webhook signatures in Swift**
+
+```swift
+import CryptoKit
+
+func verifyWebhook(secret: String, body: String, header: String) -> Bool {
+    guard let keyData = secret.data(using: .utf8),
+          let bodyData = body.data(using: .utf8) else { return false }
+    let key = SymmetricKey(data: keyData)
+    let mac = HMAC<SHA256>.authenticationCode(for: bodyData, using: key)
+    let expected = "sha256=" + mac.map { String(format: "%02x", $0) }.joined()
+    return expected == header
+}
+```
+
+---
+
+### Firestore-direct path (ordering apps)
+
+The official Xeboki Ordering App (Flutter/Dart) reads directly from the
+subscriber's Firestore. This pattern is implemented in the **Dart SDK**
+(`xeboki.ordering.getFirebaseConfig()`).
+
+For a native iOS/macOS app that needs the Firebase config, fetch it with a
+standard `URLSession` call:
+
+```swift
+var req = URLRequest(url: URL(string: "https://api.xeboki.com/v1/pos/firebase-config")!)
+req.setValue("Bearer xbk_live_...", forHTTPHeaderField: "Authorization")
+let (data, _) = try await URLSession.shared.data(for: req)
+// Decode data to extract firebase_config fields and custom_token,
+// then configure a secondary FirebaseApp and call signIn(withCustomToken:).
+```
+
+See the [Dart SDK README](https://github.com/xeboki/sdk-dart) for the full
+Flutter integration example.
+
+---
+
 ## Error Handling
 
 All SDK methods throw `XebokiError` on non-2xx HTTP responses.
